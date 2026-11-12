@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<!--
+  INTERVAL COACH  v1.0
+
+  For personal use. Not medical or fitness advice.
+
+  How it works: when you press Start, the app builds the whole workout as one
+  audio track (silence, with a tone pattern at every change) and plays it. iOS
+  keeps audio playing with the screen locked and the phone in your pocket, which
+  it does not do for ordinary page timers. The clock on screen is read from the
+  audio's own position, so what you see and what you hear can't drift apart.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Interval Coach">
+<meta name="theme-color" content="#0e131b">
+<title>Interval Coach</title>
+<style>
+:root{
+  --bg:#0e131b; --panel:#161f2b; --panel-2:#1c2733; --line:#27343f;
+  --amber:#ffb545; --amber-dim:#8a6530; --red:#e2604a; --teal:#5fb3a1;
+  --ink:#e9edf3; --muted:#8894a6;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --block-gap:28px; --sec-gap:24px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  -webkit-font-smoothing:antialiased;overscroll-behavior-y:contain}
+body{
+  padding:calc(env(safe-area-inset-top) + 18px) calc(env(safe-area-inset-right) + 16px)
+          calc(env(safe-area-inset-bottom) + 28px) calc(env(safe-area-inset-left) + 16px);
+  max-width:520px;margin:0 auto;
+}
+.hidden{display:none !important}
+.eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);
+  font-weight:600;margin:0 0 2px}
+h1{font-family:var(--mono);font-size:30px;font-weight:600;letter-spacing:-.02em;
+  margin:6px 0 10px;color:var(--amber)}
+.lede{font-size:15px;line-height:1.5;margin:0 0 26px}
+.note,.hint{font-size:12px;color:var(--muted);line-height:1.45;margin:9px 2px 0}
+
+/* ---- form ---- */
+.field{margin-top:16px}
+.field label{display:block;font-size:13px;color:var(--ink);margin-bottom:6px;font-weight:500}
+input[type=text],select{
+  width:100%;font-size:17px;font-family:var(--mono);color:var(--ink);background:var(--panel);
+  border:1px solid var(--line);border-radius:11px;padding:13px 14px;appearance:none;
+  font-variant-numeric:tabular-nums}
+select{font-family:var(--sans)}
+input:focus,select:focus{outline:none;border-color:var(--amber-dim)}
+input::placeholder{color:#5d6878}
+.total{font-family:var(--mono);font-size:14px;color:var(--amber);margin:18px 2px 0}
+.total.bad{color:var(--red)}
+
+/* ---- buttons ---- */
+button{font-family:inherit;font-size:16px;font-weight:600;color:var(--bg);
+  background:var(--amber);border:0;border-radius:11px;padding:14px 18px;cursor:pointer}
+button:active{opacity:.75}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500}
+.wide{width:100%}
+#saveSetup,#saveSet{width:100%;margin-top:20px}
+#startBtn{width:100%;margin-top:18px;padding:18px;font-size:18px}
+button.danger{flex:1;color:var(--red);border:1px solid var(--red);touch-action:none;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  background-color:transparent;background-image:linear-gradient(var(--red),var(--red));
+  background-repeat:no-repeat;background-position:center center;background-size:0% 100%;
+  transition:background-size .15s}
+button.danger.holding{color:var(--ink);background-size:100% 100%;transition:background-size 1.2s linear}
+
+/* ---- plan ---- */
+.plan{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.prow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  background:var(--panel);padding:12px 14px;border-bottom:1px solid var(--line);font-size:15px}
+.prow:last-child{border-bottom:0}
+.prow b{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
+.prow small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.prow.sum{background:var(--panel-2)}
+.prow.sum b{color:var(--amber)}
+
+/* ---- running ---- */
+#runView{text-align:center}
+.phase{font-family:var(--mono);font-size:clamp(2rem,11vw,3.2rem);font-weight:600;
+  letter-spacing:-.02em;margin-top:14px;color:var(--amber)}
+.clock{font-family:var(--mono);font-size:clamp(4.6rem,25vw,7rem);font-weight:600;line-height:1.05;
+  font-variant-numeric:tabular-nums;color:var(--ink);margin-top:4px}
+[data-kind=hard] .phase,[data-kind=sprint] .phase{color:var(--red)}
+[data-kind=easy] .phase{color:var(--teal)}
+[data-kind=ready] .phase{color:var(--muted)}
+.bar{height:4px;background:var(--line);border-radius:99px;overflow:hidden;margin:18px 4px 0}
+.bar i{display:block;height:100%;background:var(--amber);transform-origin:left;transform:scaleX(0)}
+[data-kind=hard] .bar i,[data-kind=sprint] .bar i{background:var(--red)}
+[data-kind=easy] .bar i{background:var(--teal)}
+.rule{font-size:14px;color:var(--muted);margin:14px 6px 0;min-height:1.4em}
+.readouts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:var(--block-gap)}
+.readout{background:var(--panel);padding:11px 8px}
+.readout b{display:block;font-family:var(--mono);font-size:17px;font-weight:600;
+  font-variant-numeric:tabular-nums}
+.readout span{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);margin-top:3px}
+.runbtns{display:flex;gap:10px;margin-top:22px}
+.runbtns button{padding:16px 10px}
+#pauseBtn{flex:1}
+
+/* ---- sections ---- */
+details{margin-top:var(--sec-gap);border-top:1px solid var(--line);padding-top:var(--sec-gap)}
+#startBtn + .hint + details{margin-top:var(--block-gap)}
+summary{position:relative;padding-left:16px;font-size:11px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--muted);font-weight:600;cursor:pointer;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"+";position:absolute;left:0;top:0;font-family:var(--mono);letter-spacing:0}
+details[open] summary::before{content:"\2212"}
+.sounds{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.sounds button{padding:12px 8px;font-size:14px}
+
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 24px);
+  transform:translate(-50%,14px);background:var(--panel-2);color:var(--ink);
+  border:1px solid var(--line);border-radius:99px;padding:10px 20px;font-size:14px;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9;text-align:center;
+  max-width:90vw}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<!-- ============ SCREEN 1: SETUP ============ -->
+<div id="setup" class="hidden">
+  <p class="eyebrow">Set up</p>
+  <h1>Interval Coach</h1>
+  <p class="lede">Tell it how long each part of your workout lasts. Press Start, put your phone
+    in your pocket, and listen: a different sound marks the moment to go hard, ease off,
+    sprint, and cool down. You can change all of this later.</p>
+  <div id="suForm"></div>
+  <button id="saveSetup">Save and continue</button>
+  <p class="note" id="suVer"></p>
+</div>
+
+<!-- ============ SCREEN 2: MAIN ============ -->
+<div id="main" class="hidden">
+
+  <div id="planView">
+    <p class="eyebrow">Your workout</p>
+    <div class="plan" id="planBox"></div>
+    <button id="startBtn">Start workout</button>
+    <p class="hint">After you press Start there is a short get-ready countdown. Then lock the
+      phone and put it away. Sounds play through your earbuds.</p>
+
+    <details id="setWrap">
+      <summary>Settings</summary>
+      <div id="setForm"></div>
+      <button id="saveSet">Save settings</button>
+    </details>
+
+    <details id="sndWrap">
+      <summary>Sounds</summary>
+      <p class="note" style="margin-top:16px">Tap to hear each cue, so you know what they mean
+        before you're mid-run.</p>
+      <div class="sounds">
+        <button class="ghost" data-cue="warm">Warm-up starts</button>
+        <button class="ghost" data-cue="hard">Go hard</button>
+        <button class="ghost" data-cue="easy">Ease off</button>
+        <button class="ghost" data-cue="sprint">Final sprint</button>
+        <button class="ghost" data-cue="cool">Cool-down</button>
+        <button class="ghost" data-cue="done">Finished</button>
+        <button class="ghost" data-cue="count">3-2-1 beeps</button>
+      </div>
+      <p class="note">The 3-2-1 beeps sound just before every change.</p>
+    </details>
+
+    <p class="note" id="verLine" style="margin-top:var(--block-gap)"></p>
+  </div>
+
+  <div id="runView" class="hidden" data-kind="ready">
+    <p class="eyebrow" id="runRound">&nbsp;</p>
+    <div class="phase" id="phaseName">&nbsp;</div>
+    <div class="clock" id="clock">0:00</div>
+    <div class="bar"><i id="phaseBar"></i></div>
+    <p class="rule" id="nextUp">&nbsp;</p>
+    <div class="readouts">
+      <div class="readout"><b id="rElapsed">0:00</b><span>Elapsed</span></div>
+      <div class="readout"><b id="rLeft">0:00</b><span>Left</span></div>
+      <div class="readout"><b id="rTotal">0:00</b><span>Total</span></div>
+    </div>
+    <div class="runbtns">
+      <button id="pauseBtn" class="ghost">Pause</button>
+      <button id="stopBtn" class="danger">Hold to stop</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+/*PURE-START*/
+var SR = 8000;              /* 8 kHz, 8-bit mono: ~29 MB per hour. Tones only, so this is plenty. */
+var MAX_TOTAL = 7200;       /* two hours, which keeps the track around 58 MB at most */
+
+var DEFAULTS = { ready:10, warm:300, rounds:6, hard:240, easy:240, sprint:120, cool:300, mix:true };
+
+function pad(n){ return (n < 10 ? "0" : "") + n; }
+function fmtTime(sec){
+  sec = Math.max(0, Math.round(sec));
+  var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return h ? h + ":" + pad(m) + ":" + pad(s) : m + ":" + pad(s);
+}
+/* "4" or "1.5" means minutes; "1:30" means 1 minute 30 seconds. Blank is NaN. */
+function parseTime(s){
+  s = String(s).trim();
+  if(!s) return NaN;
+  var m = /^(\d+):([0-5]?\d)$/.exec(s);
+  if(m) return (+m[1]) * 60 + (+m[2]);
+  if(/^\d+(\.\d+)?$/.test(s)) return Math.round(parseFloat(s) * 60);
+  return NaN;
+}
+/* Shows a stored length the way a person would type it. */
+function fieldTime(sec){
+  if(sec % 6 === 0) return String(sec / 60);
+  var m = Math.floor(sec / 60), s = sec % 60;
+  return m + ":" + pad(s);
+}
+
+/* The workout as a list of phases with absolute start and end times (seconds).
+   The get-ready phase comes first and is silent apart from the 3-2-1 beeps. */
+function buildPlan(c){
+  var P = [], i;
+  if(c.ready > 0) P.push({ kind:"ready", name:"Get ready", len:c.ready });
+  if(c.warm > 0)  P.push({ kind:"warm",  name:"Warm up",   len:c.warm });
+  for(i = 1; i <= c.rounds; i++){
+    P.push({ kind:"hard", name:"Hard", len:c.hard, round:i });
+    P.push({ kind:"easy", name:"Easy", len:c.easy, round:i });
+  }
+  if(c.sprint > 0) P.push({ kind:"sprint", name:"Sprint",    len:c.sprint });
+  if(c.cool > 0)   P.push({ kind:"cool",   name:"Cool down", len:c.cool });
+  var t = 0;
+  for(i = 0; i < P.length; i++){ P[i].start = t; t += P[i].len; P[i].end = t; }
+  return P;
+}
+
+/* [frequency Hz, seconds, gap after in seconds] */
+var CUES = {
+  warm:   [[440,.30,.10],[554,.50,0]],
+  hard:   [[700,.11,.05],[900,.11,.05],[1150,.22,0]],
+  easy:   [[800,.22,.06],[520,.38,0]],
+  sprint: [[800,.08,.04],[950,.08,.04],[1100,.08,.04],[1250,.08,.04],[1450,.45,0]],
+  cool:   [[660,.40,.10],[520,.40,.10],[400,.60,0]],
+  done:   [[523,.18,.05],[659,.18,.05],[784,.18,.05],[1047,.70,0]]
+};
+var COUNT_FREQ = 1000, COUNT_LEN = .09;
+
+function addTone(d, off, at, freq, dur, vol){
+  var n = Math.round(dur * SR), s0 = Math.round(at * SR), a = Math.round(.006 * SR),
+      r = Math.round(.012 * SR), w = 2 * Math.PI * freq / SR, i, env, v;
+  for(i = 0; i < n; i++){
+    var idx = off + s0 + i;
+    if(idx >= d.length) break;
+    env = Math.min(1, i / a, (n - 1 - i) / r);
+    v = 128 + Math.round(120 * vol * env * Math.sin(w * i));
+    d[idx] = v;
+  }
+}
+function addCue(d, off, at, seq){
+  var t = at;
+  for(var i = 0; i < seq.length; i++){ addTone(d, off, t, seq[i][0], seq[i][1], .85); t += seq[i][1] + seq[i][2]; }
+}
+function wavBuffer(seconds){
+  var n = Math.ceil(seconds * SR), d = new Uint8Array(44 + n), dv = new DataView(d.buffer);
+  function str(o, s){ for(var i = 0; i < s.length; i++) d[o + i] = s.charCodeAt(i); }
+  str(0,"RIFF"); dv.setUint32(4, 36 + n, true); str(8,"WAVE"); str(12,"fmt ");
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, SR, true); dv.setUint32(28, SR, true); dv.setUint16(32, 1, true);
+  dv.setUint16(34, 8, true); str(36,"data"); dv.setUint32(40, n, true);
+  d.fill(128, 44);
+  return d;
+}
+/* The whole workout as one WAV. A 3-2-1 goes before every phase change (phases
+   shorter than 8 s skip it so it can't collide with the cue). The finishing cue
+   lands at the end, and a few seconds of tail keep it from being clipped. */
+function renderWorkout(P){
+  var total = P[P.length - 1].end, d = wavBuffer(total + 3), i, k, p;
+  for(i = 0; i < P.length; i++){
+    p = P[i];
+    if(p.len >= 8) for(k = 1; k <= 3; k++) addTone(d, 44, p.end - k, COUNT_FREQ, COUNT_LEN, .8);
+    if(p.kind !== "ready") addCue(d, 44, p.start, CUES[p.kind]);
+  }
+  addCue(d, 44, total, CUES.done);
+  return d;
+}
+function renderPreview(kind){
+  var d = wavBuffer(2.5);
+  if(kind === "count"){
+    for(var k = 0; k < 3; k++) addTone(d, 44, .2 + k, COUNT_FREQ, COUNT_LEN, .8);
+  }else addCue(d, 44, .2, CUES[kind]);
+  return d;
+}
+
+/* Reads a form's raw strings into a config, or returns { error }. */
+function parseConfig(raw){
+  var c = { mix: !!raw.mix }, t;
+  function opt(key, label){
+    if(!String(raw[key]).trim()){ c[key] = 0; return null; }
+    t = parseTime(raw[key]);
+    if(!isFinite(t)) return "Check the " + label + " time.";
+    c[key] = t; return null;
+  }
+  var e;
+  if(String(raw.ready).trim()){
+    t = parseFloat(raw.ready);
+    if(!isFinite(t) || t < 0 || t > 120 || t !== Math.floor(t)) return { error:"Get-ready time: whole seconds, 0 to 120." };
+    c.ready = t;
+  }else c.ready = 0;
+  if((e = opt("warm","warm-up"))) return { error:e };
+  t = parseFloat(raw.rounds);
+  if(!isFinite(t) || t !== Math.floor(t) || t < 1 || t > 60) return { error:"Rounds: a whole number from 1 to 60." };
+  c.rounds = t;
+  t = parseTime(raw.hard);
+  if(!isFinite(t) || t < 5) return { error:"Hard period: at least 5 seconds." };
+  c.hard = t;
+  t = parseTime(raw.easy);
+  if(!isFinite(t) || t < 5) return { error:"Easy period: at least 5 seconds." };
+  c.easy = t;
+  if((e = opt("sprint","final sprint"))) return { error:e };
+  if((e = opt("cool","cool-down"))) return { error:e };
+  var total = c.ready + c.warm + c.rounds * (c.hard + c.easy) + c.sprint + c.cool;
+  if(total > MAX_TOTAL) return { error:"The whole workout can be at most 2 hours." };
+  return { cfg:c, total:total };
+}
+/*PURE-END*/
+
+/* ---------------- storage ---------------- */
+var KEY = "interval-coach-v1", mem = null;
+function saveRaw(s){ mem = s; try{ localStorage.setItem(KEY, s); }catch(e){} }
+function loadRaw(){ try{ var v = localStorage.getItem(KEY); if(v != null) return v; }catch(e){} return mem; }
+
+var S = { setupDone:false, cfg:copy(DEFAULTS) };
+function copy(o){ var r = {}; for(var k in o) r[k] = o[k]; return r; }
+function persist(){ saveRaw(JSON.stringify(S)); }
+
+var APP_VERSION = "1.0";
+var toastT;
+function toast(msg){
+  var t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastT);
+  toastT = setTimeout(function(){ t.classList.remove("show"); }, 2200);
+}
+function $(id){ return document.getElementById(id); }
+
+/* ---------------- the form (used on both screens) ---------------- */
+var FIELDS = [
+  ["ready",  "Get-ready countdown (seconds)", "Time to put the phone away before the workout starts. Use 0 to skip."],
+  ["warm",   "Warm-up", "Minutes, like 5 or 7.5, or minutes:seconds, like 5:30. Blank skips it."],
+  ["rounds", "Rounds of hard and easy", "How many times to repeat one hard period followed by one easy period."],
+  ["hard",   "Hard period (each round)", "Same format as above."],
+  ["easy",   "Easy period (each round)", "Same format as above."],
+  ["sprint", "Final sprint", "One last hard push after the last round. Blank skips it."],
+  ["cool",   "Cool-down", "Blank skips it."]
+];
+function buildForm(box, p){
+  var h = "";
+  for(var i = 0; i < FIELDS.length; i++){
+    var f = FIELDS[i], num = f[0] === "ready" || f[0] === "rounds";
+    h += '<div class="field"><label for="' + p + f[0] + '">' + f[1] + '</label>' +
+         '<input id="' + p + f[0] + '" type="text" inputmode="' + (num ? "numeric" : "decimal") +
+         '" autocomplete="off"><p class="note">' + f[2] + '</p></div>';
+  }
+  h += '<div class="field"><label for="' + p + 'mix">Your music</label>' +
+       '<select id="' + p + 'mix"><option value="1">Keep playing alongside the cues</option>' +
+       '<option value="0">Let the cues take over (most reliable)</option></select>' +
+       '<p class="note">If your music app stops when you press Start, or you miss cues with the ' +
+       'screen locked, switch this to the second option. See the notes that came with the app.</p></div>' +
+       '<p class="total" id="' + p + 'total"></p>';
+  box.innerHTML = h;
+  var inputs = box.querySelectorAll("input,select");
+  for(var j = 0; j < inputs.length; j++){
+    inputs[j].addEventListener("input", function(){ updateTotal(p); });
+    inputs[j].addEventListener("change", function(){ updateTotal(p); });
+  }
+}
+function fillForm(p, c){
+  $(p + "ready").value  = c.ready;
+  $(p + "warm").value   = c.warm   ? fieldTime(c.warm)   : "";
+  $(p + "rounds").value = c.rounds;
+  $(p + "hard").value   = fieldTime(c.hard);
+  $(p + "easy").value   = fieldTime(c.easy);
+  $(p + "sprint").value = c.sprint ? fieldTime(c.sprint) : "";
+  $(p + "cool").value   = c.cool   ? fieldTime(c.cool)   : "";
+  $(p + "mix").value    = c.mix ? "1" : "0";
+  updateTotal(p);
+}
+function readForm(p){
+  return parseConfig({
+    ready:$(p + "ready").value, warm:$(p + "warm").value, rounds:$(p + "rounds").value,
+    hard:$(p + "hard").value, easy:$(p + "easy").value, sprint:$(p + "sprint").value,
+    cool:$(p + "cool").value, mix:$(p + "mix").value === "1"
+  });
+}
+function updateTotal(p){
+  var r = readForm(p), el = $(p + "total");
+  if(r.error){ el.textContent = r.error; el.classList.add("bad"); return; }
+  el.classList.remove("bad");
+  var wo = r.total - r.cfg.ready;
+  el.textContent = "Workout length: " + fmtTime(wo) + (r.cfg.ready ? "  (+ " + r.cfg.ready + "s get-ready)" : "");
+}
+
+/* ---------------- screens ---------------- */
+function showSetup(){
+  buildForm($("suForm"), "su_");
+  fillForm("su_", S.cfg);
+  $("setup").classList.remove("hidden"); $("main").classList.add("hidden");
+}
+function renderPlan(){
+  var c = S.cfg, h = "", wo = c.warm + c.rounds * (c.hard + c.easy) + c.sprint + c.cool;
+  function row(a, b, sub){ return '<div class="prow"><div>' + a + (sub ? '<small>' + sub + '</small>' : '') + '</div><b>' + b + '</b></div>'; }
+  if(c.ready)  h += row("Get ready", fmtTime(c.ready));
+  if(c.warm)   h += row("Warm-up", fmtTime(c.warm));
+  h += row(c.rounds + (c.rounds === 1 ? " round" : " rounds"), fmtTime(c.rounds * (c.hard + c.easy)),
+           "Hard " + fmtTime(c.hard) + ", then easy " + fmtTime(c.easy));
+  if(c.sprint) h += row("Final sprint", fmtTime(c.sprint));
+  if(c.cool)   h += row("Cool-down", fmtTime(c.cool));
+  h += '<div class="prow sum"><div>Workout length</div><b>' + fmtTime(wo) + '</b></div>';
+  $("planBox").innerHTML = h;
+}
+function showMain(){
+  $("setup").classList.add("hidden"); $("main").classList.remove("hidden");
+  buildForm($("setForm"), "st_");
+  fillForm("st_", S.cfg);
+  renderPlan();
+  showPlanView();
+}
+function showPlanView(){ $("runView").classList.add("hidden"); $("planView").classList.remove("hidden"); }
+function showRunView(){ $("planView").classList.add("hidden"); $("runView").classList.remove("hidden"); }
+
+$("saveSetup").addEventListener("click", function(){
+  var r = readForm("su_");
+  if(r.error){ toast(r.error); return; }
+  S.cfg = r.cfg; S.setupDone = true; persist(); showMain();
+});
+$("saveSet").addEventListener("click", function(){
+  var r = readForm("st_");
+  if(r.error){ toast(r.error); return; }
+  S.cfg = r.cfg; persist(); renderPlan(); toast("Saved");
+});
+
+/* ---------------- audio session ----------------
+   "ambient" lets other apps' audio keep playing. "playback" takes over the audio
+   output, which is the reliable choice for a locked phone. The property exists on
+   iOS 16.4 and later; where it doesn't, the page just uses the default. */
+function setSession(mix){
+  try{ if(navigator.audioSession) navigator.audioSession.type = mix ? "ambient" : "playback"; }catch(e){}
+}
+
+/* sound previews */
+var prevAudio = null, prevUrl = null;
+function playPreview(kind){
+  try{
+    setSession(S.cfg.mix);
+    if(prevAudio){ prevAudio.pause(); prevAudio = null; }
+    if(prevUrl) URL.revokeObjectURL(prevUrl);
+    prevUrl = URL.createObjectURL(new Blob([renderPreview(kind)], { type:"audio/wav" }));
+    prevAudio = new Audio(prevUrl);
+    var p = prevAudio.play();
+    if(p && p.catch) p.catch(function(){ toast("Couldn't play the sound."); });
+  }catch(e){ toast("Couldn't play the sound."); }
+}
+var cueBtns = document.querySelectorAll("[data-cue]");
+for(var cb = 0; cb < cueBtns.length; cb++)
+  cueBtns[cb].addEventListener("click", function(){ playPreview(this.getAttribute("data-cue")); });
+
+/* ---------------- running a workout ---------------- */
+var audio = null, url = null, P = [], total = 0, readyLen = 0, state = "idle"; /* idle|running|paused|done */
+
+function startWorkout(){
+  var plan = buildPlan(S.cfg);
+  if(!plan.length) return;
+  P = plan; total = P[P.length - 1].end; readyLen = S.cfg.ready;
+  try{
+    setSession(S.cfg.mix);
+    var wav = renderWorkout(P);
+    url = URL.createObjectURL(new Blob([wav], { type:"audio/wav" }));
+    audio = new Audio(); audio.preload = "auto"; audio.src = url;
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("pause", function(){
+      if(audio && state === "running" && !audio.ended){ state = "paused"; syncButtons(); }
+    });
+    audio.addEventListener("play", function(){
+      if(audio && state === "paused"){ state = "running"; syncButtons(); }
+    });
+    state = "running";
+    var pr = audio.play();
+    if(pr && pr.catch) pr.catch(function(){ toast("Couldn't start the audio."); stopWorkout(); });
+  }catch(e){ toast("Couldn't build the workout audio."); stopWorkout(); return; }
+  if(prevAudio){ prevAudio.pause(); prevAudio = null; }
+  setMediaSession();
+  showRunView(); syncButtons(); tick();
+}
+function setMediaSession(){
+  try{
+    if(!("mediaSession" in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({ title:"Interval workout", artist:"Interval Coach" });
+    navigator.mediaSession.setActionHandler("play",  function(){ if(audio && state === "paused") audio.play(); });
+    navigator.mediaSession.setActionHandler("pause", function(){ if(audio && state === "running") audio.pause(); });
+  }catch(e){}
+}
+function onEnded(){ state = "done"; syncButtons(); tick(); }
+function stopWorkout(){
+  state = "idle";
+  if(audio){ try{ audio.pause(); audio.removeAttribute("src"); audio.load(); }catch(e){} audio = null; }
+  if(url){ URL.revokeObjectURL(url); url = null; }
+  try{ if("mediaSession" in navigator) navigator.mediaSession.metadata = null; }catch(e){}
+  showPlanView();
+}
+function syncButtons(){
+  var pb = $("pauseBtn");
+  if(state === "done"){ pb.textContent = "Back to start"; $("stopBtn").classList.add("hidden"); }
+  else{
+    $("stopBtn").classList.remove("hidden");
+    pb.textContent = state === "paused" ? "Resume" : "Pause";
+  }
+}
+$("startBtn").addEventListener("click", startWorkout);
+$("pauseBtn").addEventListener("click", function(){
+  if(!audio) return;
+  if(state === "done") stopWorkout();
+  else if(state === "running") audio.pause();
+  else if(state === "paused") audio.play();
+});
+
+/* Stopping takes a hold, so a touch in a pocket or on a bag strap can't end it. */
+var stopBtn = $("stopBtn"), stopT = null;
+function endStopHold(){ clearTimeout(stopT); stopT = null; stopBtn.classList.remove("holding"); stopBtn.textContent = "Hold to stop"; }
+stopBtn.addEventListener("pointerdown", function(e){
+  if(e.cancelable) e.preventDefault();
+  stopBtn.classList.add("holding"); stopBtn.textContent = "Keep holding\u2026";
+  clearTimeout(stopT);
+  stopT = setTimeout(function(){ endStopHold(); stopWorkout(); }, 1200);
+});
+["pointerup","pointercancel","pointerleave"].forEach(function(ev){ stopBtn.addEventListener(ev, endStopHold); });
+stopBtn.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+
+/* The screen is drawn from the audio's own position. */
+function tick(){
+  if(!audio || state === "idle") return;
+  var t = audio.currentTime, i = 0, p;
+  while(i < P.length - 1 && t >= P[i].end) i++;
+  p = P[i];
+  var finished = state === "done" || t >= total;
+  var left = Math.max(0, Math.ceil(total - t - 0.001));
+  if(finished){
+    $("runView").setAttribute("data-kind", "done");
+    $("phaseName").textContent = "Done";
+    $("clock").textContent = "0:00";
+    $("runRound").textContent = "Nice work";
+    $("nextUp").textContent = "";
+    $("phaseBar").style.transform = "scaleX(1)";
+  }else{
+    $("runView").setAttribute("data-kind", p.kind);
+    $("phaseName").textContent = p.name;
+    $("clock").textContent = fmtTime(Math.ceil(p.end - t - 0.001));
+    $("runRound").innerHTML = p.round ? "Round " + p.round + " of " + S.cfg.rounds : "&nbsp;";
+    var nx = P[i + 1];
+    $("nextUp").textContent = nx ? "Next: " + nx.name + " \u00b7 " + fmtTime(nx.len) : "Next: finish";
+    $("phaseBar").style.transform = "scaleX(" + Math.min(1, Math.max(0, (t - p.start) / p.len)).toFixed(4) + ")";
+  }
+  var wo = total - readyLen;
+  $("rElapsed").textContent = fmtTime(Math.min(wo, Math.max(0, t - readyLen)));
+  $("rLeft").textContent    = fmtTime(left);
+  $("rTotal").textContent   = fmtTime(wo);
+}
+setInterval(tick, 250);
+document.addEventListener("visibilitychange", function(){ if(!document.hidden) tick(); });
+
+/* ---------------- boot ---------------- */
+$("suVer").textContent = "Version " + APP_VERSION;
+$("verLine").textContent = "Version " + APP_VERSION;
+(function(){
+  var raw = loadRaw();
+  if(raw){
+    try{
+      var o = JSON.parse(raw);
+      if(o && o.cfg){
+        for(var k in S.cfg) if(o.cfg[k] !== undefined) S.cfg[k] = o.cfg[k];
+        S.setupDone = !!o.setupDone;
+      }
+    }catch(e){}
+  }
+  if(S.setupDone) showMain(); else showSetup();
+})();
+})();
+</script>
+</body>
+</html>
